@@ -14,6 +14,164 @@ function getJSON(url) {
     });
 }
 
+async function showGeojsonLayer(obj) {
+    if(!obj || !obj.geojsonLayer)
+        return;
+    if(obj.geojsonLayer instanceof Promise)
+        await obj.geojsonLayer;
+    if(this.isDestroyed)
+        return;
+    obj.geojsonLayer.addTo(modelViewer.leafletMap);
+    modelViewer.leafletMap.fitBounds(obj.geojsonLayer.getBounds());
+}
+function hideGeojsonLayer(obj) {
+    if(!obj || !obj.geojsonLayer || obj.geojsonLayer instanceof Promise)
+        return;
+    obj.geojsonLayer.remove();
+}
+
+Vue.component('allmodels', {
+    template:
+        `<div>
+            <div v-for="model in models">
+                <br>
+                <button class="btn btn-primary btn-sm"
+                    v-on:click=""
+                    >Open</button>
+            </div>
+        </div>`,
+    props: ['models'],
+    created() {
+        this.createGeojsonLayer(this.models);
+        this.showGeojsonLayer(this.models);
+    },
+    destroyed() {
+        this.isDestroyed = true;
+        this.hideGeojsonLayer(this.models);
+    },
+    methods: {
+        showGeojsonLayer,
+        hideGeojsonLayer,
+        createGeojsonLayer(models) {
+            if (!models || models.geojsonLayer)
+                return;
+
+            models.geojsonLayer = (async () => {
+                let geojson = await getJSON('/api/models/geojson');
+                let onEachFeature = function(feature, layer) {
+                    let popup = document.createElement('div');
+                    popup.innerHTML =
+                        `${feature.properties.modelname}<br>
+                        <button class='btn btn-primary btn-sm'>Open</button>`;
+                    layer.bindPopup(
+                        `${feature.properties.modelname}
+                        <br><button class='btn btn-primary btn-sm'
+                            onclick='popups_onclick("${feature.properties.modelname}")'
+                            >Open</button>`
+                    );
+                }
+                models.geojsonLayer = L.geoJson(geojson, {
+                    onEachFeature: onEachFeature
+                });
+            })();
+        },
+    },
+    watch: {
+        models: function(newModels, oldModels) {
+            this.hideGeojsonLayer(oldModels);
+            this.createGeojsonLayer(newModels);
+            this.showGeojsonLayer(newModels);
+        },
+    },
+});
+
+Vue.component('model', {
+    template: '<div></div>',
+    props: ['model'],
+    created() {
+        this.createGeojsonLayer(this.model);
+        this.showGeojsonLayer(this.model);
+    },
+    destroyed() {
+        this.isDestroyed = true;
+        this.hideGeojsonLayer(this.model);
+    },
+    methods: {
+        showGeojsonLayer,
+        hideGeojsonLayer,
+        createGeojsonLayer(model) {
+            if(!model || model.geojsonLayer)
+                return;
+
+            model.geojsonLayer = (async () => {
+                let geojson = await getJSON(`/api/models/${model.name}/geojson`);
+                let pointToLayer = (feature, latlng) => {
+                    var circle = L.circle(latlng, {
+                        color: 'red',
+                        weight: 2,
+                        fillOpacity: 1,
+                        radius: 3
+                    });
+                    circle._leaflet_id = feature.properties.id;
+                    circle.on('click', (e) => {
+                        this.nodeViewFrame.changeView(new ModelView.NodeView(e.target._leaflet_id));
+                    });
+                    return circle;
+                }
+                model.geojsonLayer = L.geoJson(geojson, {
+                    pointToLayer: pointToLayer
+                });
+            })();
+        },
+    },
+    watch: {
+        model: function(newModel, oldModel) {
+            this.hideGeojsonLayer(oldModel);
+            this.createGeojsonLayer(newModel);
+            this.showGeojsonLayer(newModel);
+        }
+    },
+});
+
+var modelViewer = new Vue({
+    el: '#model-viewer',
+    data: {
+        models: null,
+        model: null,
+    },
+    async created() {
+        this.models = await getJSON("../api/models");
+        this.models = this.models.reduce((obj, model) => {obj[model.name] = model; return obj;}, {});
+    },
+    mounted() {
+        this.leafletMap = L.map('leaflet-map').setView([37.8,-122.0], 9);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        }).addTo(this.leafletMap);
+    },
+})
+
+
+
+/*new Vue({
+    el: '#map',
+    mounted: function() {
+        this._leafletMap = L.map(this.$el).setView([37.8,-122.0], 9);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        }).addTo(this._leafletMap);
+    }
+});*/
+
+
+
+
+
+
+
+/*
 var url = "/model_viewer";
 var leaflet_map;
 var html = {};
@@ -188,3 +346,4 @@ function modelmenu_onchange() {
 function popups_onclick(modelname) {
     mainViewFrame.changeView(new ModelView(modelname));
 }
+*/
