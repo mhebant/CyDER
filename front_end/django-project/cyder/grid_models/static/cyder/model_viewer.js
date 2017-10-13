@@ -14,96 +14,62 @@ function getJSON(url) {
     });
 }
 
-async function showGeojsonLayer(obj) {
-    if(!obj || !obj.geojsonLayer)
-        return;
-    if(obj.geojsonLayer instanceof Promise)
-        await obj.geojsonLayer;
-    if(this.isDestroyed)
-        return;
-    obj.geojsonLayer.addTo(modelViewer.leafletMap);
-    modelViewer.leafletMap.fitBounds(obj.geojsonLayer.getBounds());
-}
-function hideGeojsonLayer(obj) {
-    if(!obj || !obj.geojsonLayer || obj.geojsonLayer instanceof Promise)
-        return;
-    obj.geojsonLayer.remove();
-}
-
-Vue.component('allmodels', {
-    template:
-        `<div>
-            <div v-for="model in models">
-                <br>
-                <button class="btn btn-primary btn-sm"
-                    v-on:click=""
-                    >Open</button>
-            </div>
-        </div>`,
-    props: ['models'],
+Vue.component('model-info', {
+    props: ['model'],
     created() {
-        this.createGeojsonLayer(this.models);
-        this.showGeojsonLayer(this.models);
+        if(this.model === null) {
+            this.createAllModelsLayer();
+            this.showLayer(this.allModelsLayer);
+        }
+        else {
+            this.createModelsLayer(this.model);
+            this.showLayer(this.model.layer);
+        }
     },
     destroyed() {
-        this.isDestroyed = true;
-        this.hideGeojsonLayer(this.models);
+        if (this.model)
+            this.hideLayer(this.model.layer);
+        else
+            this.hideLayer(this.allModelsLayer);
     },
     methods: {
-        showGeojsonLayer,
-        hideGeojsonLayer,
-        createGeojsonLayer(models) {
-            if (!models || models.geojsonLayer)
+        async showLayer(layer) {
+            if(layer instanceof Promise)
+                layer = await layer;
+            layer.addTo(modelViewer.leafletMap);
+            modelViewer.leafletMap.fitBounds(layer.getBounds());
+        },
+        async hideLayer(layer) {
+            if(layer instanceof Promise)
+                layer = await layer;
+            layer.remove();
+        },
+        createAllModelsLayer() {
+            if (this.allModelsLayer)
                 return;
 
-            models.geojsonLayer = (async () => {
+            this.allModelsLayer = (async () => {
                 let geojson = await getJSON('/api/models/geojson');
-                let onEachFeature = function(feature, layer) {
+                let onEachFeature = (feature, layer) => {
                     let popup = document.createElement('div');
                     popup.innerHTML =
                         `${feature.properties.modelname}<br>
                         <button class='btn btn-primary btn-sm'>Open</button>`;
-                    layer.bindPopup(
-                        `${feature.properties.modelname}
-                        <br><button class='btn btn-primary btn-sm'
-                            onclick='popups_onclick("${feature.properties.modelname}")'
-                            >Open</button>`
-                    );
+                    popup.getElementsByTagName('button')[0].addEventListener('click', () => {
+                        this.$parent.model = this.$parent.models[feature.properties.modelname];
+                    });
+                    layer.bindPopup(popup);
                 }
-                models.geojsonLayer = L.geoJson(geojson, {
+                return this.allModelsLayer = L.geoJson(geojson, {
                     onEachFeature: onEachFeature
                 });
             })();
         },
-    },
-    watch: {
-        models: function(newModels, oldModels) {
-            this.hideGeojsonLayer(oldModels);
-            this.createGeojsonLayer(newModels);
-            this.showGeojsonLayer(newModels);
-        },
-    },
-});
-
-Vue.component('model', {
-    template: '<div></div>',
-    props: ['model'],
-    created() {
-        this.createGeojsonLayer(this.model);
-        this.showGeojsonLayer(this.model);
-    },
-    destroyed() {
-        this.isDestroyed = true;
-        this.hideGeojsonLayer(this.model);
-    },
-    methods: {
-        showGeojsonLayer,
-        hideGeojsonLayer,
-        createGeojsonLayer(model) {
-            if(!model || model.geojsonLayer)
+        createModelLayer(model) {
+            if(model.layer)
                 return;
 
-            model.geojsonLayer = (async () => {
+            model.layer = (async () => {
                 let geojson = await getJSON(`/api/models/${model.name}/geojson`);
                 let pointToLayer = (feature, latlng) => {
                     var circle = L.circle(latlng, {
@@ -114,11 +80,12 @@ Vue.component('model', {
                     });
                     circle._leaflet_id = feature.properties.id;
                     circle.on('click', (e) => {
+                        this.node =
                         this.nodeViewFrame.changeView(new ModelView.NodeView(e.target._leaflet_id));
                     });
                     return circle;
                 }
-                model.geojsonLayer = L.geoJson(geojson, {
+                return model.layer = L.geoJson(geojson, {
                     pointToLayer: pointToLayer
                 });
             })();
@@ -126,9 +93,18 @@ Vue.component('model', {
     },
     watch: {
         model: function(newModel, oldModel) {
-            this.hideGeojsonLayer(oldModel);
-            this.createGeojsonLayer(newModel);
-            this.showGeojsonLayer(newModel);
+            if(oldModel)
+                this.hideLayer(oldModel.layer);
+            else
+                this.hideLayer(this.allModelsLayer);
+
+            if(newModel) {
+                this.createModelLayer(newModel);
+                this.showLayer(newModel.layer);
+            } else {
+                this.createAllModelsLayer();
+                this.showLayer(this.allModelsLayer);
+            }
         }
     },
 });
@@ -136,7 +112,7 @@ Vue.component('model', {
 var modelViewer = new Vue({
     el: '#model-viewer',
     data: {
-        models: null,
+        models: undefined,
         model: null,
     },
     async created() {

@@ -27,46 +27,45 @@
 
         <div id="leaflet-map" style="height: 70vh; margin: 1rem 0 1rem 0"></div>
 
-        <model v-if="model" v-bind:model="model"></model>
-        <allmodels v-else v-bind:models="models"></allmodels>
-
-        <div class="row" style="margin-bottom: 1rem">
-            <div class=col-md-4>
-                <div class="card">
-                    <div class="card-header">
-                        Infos
-                    </div>
-                    <div class="card-body">
-                        Model name: <span id="modelname"></span><br>
-                        Nodes count: <span id="nodescount"></span><br>
-                        Devices count: <span id="devicescount"></span><br>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card">
-                    <div class="card-header">
-                        Devices count detail
-                    </div>
-                    <div id="devicecountdetail" class="card-body">
-
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card">
-                    <div class="card-header input-group">
-                        <input class="form-control" placeholder="Search" name="srch-term" id="srch-term" type="text">
-                        <div class="input-group-btn">
-                            <button class="btn btn-default" type="submit">Search</button>
+        <model-info v-bind:model="model" inline-template>
+            <div v-if="model" class="row" style="margin-bottom: 1rem">
+                <div class=col-md-4>
+                    <div class="card">
+                        <div class="card-header">
+                            Infos
+                        </div>
+                        <div class="card-body">
+                            Model name: {{ model.name }}<br>
+                            Nodes count: <span id="nodescount"></span><br>
+                            Devices count: <span id="devicescount"></span><br>
                         </div>
                     </div>
-                    <div id="searchresult" class="card-body">
-                        Search
+                </div>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-header">
+                            Devices count detail
+                        </div>
+                        <div id="devicecountdetail" class="card-body">
+
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-header input-group">
+                            <input class="form-control" placeholder="Search" name="srch-term" id="srch-term" type="text">
+                            <div class="input-group-btn">
+                                <button class="btn btn-default" type="submit">Search</button>
+                            </div>
+                        </div>
+                        <div id="searchresult" class="card-body">
+                            Search
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
+        </model-info>
     </div>
     {% endverbatim %}
 
