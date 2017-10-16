@@ -20,13 +20,6 @@
 
     {% verbatim %}
     <div id="model-viewer">
-        Select a model to display: <select class="custom-select" v-model="model">
-            <option v-bind:value="null">All</option>
-            <option v-for="model in models" v-bind:value="model">{{ model.name }}</option>
-        </select>
-
-        <div id="leaflet-map" style="height: 70vh; margin: 1rem 0 1rem 0"></div>
-
         <model-info v-bind:model="model" inline-template>
             <div v-if="model" class="row" style="margin-bottom: 1rem">
                 <div class=col-md-4>
@@ -75,6 +68,7 @@
     <script src="https://unpkg.com/leaflet@1.2.0/dist/leaflet.js"
         integrity="sha512-lInM/apFSqyy1o6s89K4iQUKg6ppXEgsVxT35HbzUupEVRh2Eu9Wdl4tHj7dZO0s1uvplcYGmt3498TtHq+log=="
         crossorigin=""></script>
+    <script src="{% static 'cyder/viewlib.js' %}"></script>
     <script src="{% static 'cyder/model_viewer.js' %}"></script>
     <script>
         $(".navbar [data-name='model_viewer']").addClass("active");
