@@ -3,7 +3,6 @@ class View {
         this._html = {};
         this._html.el = document.createElement(tag);
         this._childs = {};
-        this._methods = {};
         this._parent = parent;
     }
     get el() { return this._html.el; }
@@ -13,9 +12,6 @@ class View {
     render() {
         this._html.el.innerHTML = this._template;
 
-        for(let el of this._html.el.querySelectorAll('[data-childview]'))
-            this._childs[el.getAttribute('data-childview')].emplace(el);
-
         for(let el of this._html.el.querySelectorAll('[data-name]'))
             this._html[el.getAttribute('data-name')] = el;
 
@@ -23,9 +19,12 @@ class View {
             for(let listner of el.getAttribute('data-on').split(';')) {
                 let evt, method;
                 [evt, method] = el.getAttribute('data-on').split(':');
-                el.addEventListener(evt, this._methods[method]);
+                el.addEventListener(evt, (...args) => this[method](...args));
             }
         }
+
+        for(let el of this._html.el.querySelectorAll('[data-childview]'))
+            this._childs[el.getAttribute('data-childview')].emplace(el);
     }
     emplace(el) {
         for (let i = 0; i < el.attributes.length; i++) {
@@ -43,7 +42,7 @@ class View {
     }
 }
 
-function FOR(array, func) {
+function FOREACH(array, func) {
     if (array instanceof Array)
         return array.map(func).join('');
     else {
@@ -55,10 +54,10 @@ function FOR(array, func) {
 }
 function IF(cond, ifTemplate, elseTemplate) {
     if (cond)
-        return ifTemplate;
+        return ifTemplate();
     else {
         if (elseTemplate)
-            return elseTemplate;
+            return elseTemplate();
         else
             return '';
     }

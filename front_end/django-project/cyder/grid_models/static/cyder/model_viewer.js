@@ -22,24 +22,24 @@ class SelectModel extends View {
             this.models = models;
             this.render();
         });
-        this._methods.onchange = (e) => {
-            this.parent.model = this._html.select.value;
-        };
         this.render();
+    }
+    _onchange(e) {
+        this.parent.modelName = this._html.select.value;
     }
     getModels() {
         return this.parent.getModels();
     }
     get _template() {
         return `
-        Select a model to display: <select data-name="select" data-on="change:onchange" class="custom-select">
+        Select a model to display: <select data-name="select" data-on="change:_onchange" class="custom-select">
             <option value="">All</option>
-            ${ FOR(this.models, (modelname) =>
-                `<option value"${modelname}">${modelname}</option>`
+            ${ FOREACH(this.models, (modelName) =>
+                `<option value"${modelName}">${modelName}</option>`
             )}
         </select>`;
     }
-    set model(val) { this.getModels().then(() => this._html.select.value = val); }
+    set modelName(val) { this.getModels().then(() => this._html.select.value = val); }
 }
 
 class LeafletMap extends View {
@@ -62,51 +62,58 @@ class LeafletMap extends View {
 }
 
 class ModelPopup extends View {
-    constructor(parent, modelname) {
+    constructor(parent, modelName) {
         super('div', parent);
-        this.modelname = modelname;
-        this._methods.onclick = (e) => {
-            this.parent.model = modelname;
-        };
+        this.modelName = modelName;
         this.render();
+    }
+    _onclick(e) {
+        this.parent.modelName = this.modelName;
     }
     get _template() {
         return `
-        ${this.modelname}<br>
-        <button class='btn btn-primary btn-sm' data-on="click:onclick">Open</button>`;
+        ${this.modelName}<br>
+        <button class='btn btn-primary btn-sm' data-on="click:_onclick">Open</button>`;
     }
 }
 
 class ModelViewer extends View {
     constructor(el) {
         super('div',el);
-        this.models = this.getModels();
+        this.getModels();
         this._childs['select-model'] = new SelectModel(this);
-        this._childs['leaflet-map'] = new LeafletMap();
+        this._childs['leaflet-map'] = new LeafletMap(this);
+        this._childs['model-info'] = new ModelInfo(this, this.child('leaflet-map').map);
     }
-    get model() { return this._model; }
-    set model(newModel) {
-        if(newModel === this._model)
+    get modelName() { return this._modelName; }
+    set modelName(newModelName) {
+        if(newModelName === this._modelName)
             return;
-        if(this._model === '')
+        if(this._modelName === '')
             this._getAllModelsLayer().then((layer) => layer.remove());
-        this._model = newModel;
-        if (this._model === '')
+        this._modelName = newModelName;
+        if (this._modelName === '') {
             this._getAllModelsLayer().then((layer) => {
                 layer.addTo(this.child('leaflet-map').map);
                 this.child('leaflet-map').map.fitBounds(layer.getBounds());
             });
-        this.render();
-        this.child('select-model').model = this._model;
-        //this.child('model-info').model = this._model;
+            this.child('model-info').model = null;
+        } else {
+            this.getModels().then((models) =>
+                this.child('model-info').model = models[this._modelName]);
+        }
+        this.child('select-model').modelName = this._modelName;
+
     }
     getModels() {
         if(this._modelsProm)
             return this._modelsProm;
         return this._modelsProm = (async () => {
-            this.models = await getJSON('/api/models');
-            this.models = this.models.reduce((obj, model) => {obj[model.name] = model; return obj;}, {});
-            return this.models;
+            let models = await getJSON('/api/models');
+            models = models.reduce((obj, model) => {obj[model.name] = model; return obj;}, {});
+            for(let modelName in models)
+                models[modelName].nodes = {};
+            return models;
         })();
     }
     _getAllModelsLayer() {
@@ -126,129 +133,109 @@ class ModelViewer extends View {
     get _template() {
         return `
         <div data-childview="select-model"></div>
-
-        <div data-childview="leaflet-map" style="height: 70vh; margin: 1rem 0 1rem 0;"></div>`;
+        <div data-childview="leaflet-map" style="height: 70vh; margin: 1rem 0 1rem 0;"></div>
+        <div data-childview="model-info"></div>`;
     }
 }
 
-var test = new ModelViewer();
-test.emplace(document.querySelector('#model-viewer'));
-test.render();
-//test.model = '';
-test.model = 'BU0001';
-
-/*
-Vue.component('model-info', {
-    props: ['model'],
-    created() {
-        if(this.model === null) {
-            this.createAllModelsLayer();
-            this.showLayer(this.allModelsLayer);
-        }
-        else {
-            this.createModelsLayer(this.model);
-            this.showLayer(this.model.layer);
-        }
-    },
-    destroyed() {
-        if (this.model)
-            this.hideLayer(this.model.layer);
-        else
-            this.hideLayer(this.allModelsLayer);
-    },
-    methods: {
-        async showLayer(layer) {
-            if(layer instanceof Promise)
-                layer = await layer;
-            layer.addTo(modelViewer.leafletMap);
-            modelViewer.leafletMap.fitBounds(layer.getBounds());
-        },
-        async hideLayer(layer) {
-            if(layer instanceof Promise)
-                layer = await layer;
-            layer.remove();
-        },
-        createAllModelsLayer() {
-            if (this.allModelsLayer)
-                return;
-
-            this.allModelsLayer = (async () => {
-                let geojson = await getJSON('/api/models/geojson');
-                let onEachFeature = (feature, layer) => {
-                    let popup = document.createElement('div');
-                    popup.innerHTML =
-                        `${feature.properties.modelname}<br>
-                        <button class='btn btn-primary btn-sm'>Open</button>`;
-                    popup.getElementsByTagName('button')[0].addEventListener('click', () => {
-                        this.$parent.model = this.$parent.models[feature.properties.modelname];
-                    });
-                    layer.bindPopup(popup);
-                }
-                return this.allModelsLayer = L.geoJson(geojson, {
-                    onEachFeature: onEachFeature
+class ModelInfo extends View {
+    constructor(parent, map) {
+        super('div', parent);
+        this._map = map;
+    }
+    get model() { return this._model; }
+    set model(model) {
+        if(this._model)
+            this._getModelLayer().then((layer) => layer.remove());
+        this._model = model;
+        if(this._model !== null)
+            this._getModelLayer().then((layer) => {
+                layer.addTo(this._map);
+                this._map.fitBounds(layer.getBounds());
+            });
+        this.render();
+    }
+    _getModelLayer() {
+        if(!this.model)
+            throw "Can't get the model layer: No model givem to ModelInfo";
+        if(this.model.layerProm)
+            return this.model.layerProm;
+        return this.model.layerProm = (async () => {
+            let geojson = await getJSON(`/api/models/${this.model.name}/geojson`);
+            let pointToLayer = (feature, latlng) => {
+                var circle = L.circle(latlng, {
+                    color: 'red',
+                    weight: 2,
+                    fillOpacity: 1,
+                    radius: 3
                 });
-            })();
-        },
-        createModelLayer(model) {
-            if(model.layer)
-                return;
-
-            model.layer = (async () => {
-                let geojson = await getJSON(`/api/models/${model.name}/geojson`);
-                let pointToLayer = (feature, latlng) => {
-                    var circle = L.circle(latlng, {
-                        color: 'red',
-                        weight: 2,
-                        fillOpacity: 1,
-                        radius: 3
-                    });
-                    circle._leaflet_id = feature.properties.id;
-                    circle.on('click', (e) => {
-                        this.node =
-                        this.nodeViewFrame.changeView(new ModelView.NodeView(e.target._leaflet_id));
-                    });
-                    return circle;
-                }
-                return model.layer = L.geoJson(geojson, {
-                    pointToLayer: pointToLayer
-                });
-            })();
-        },
-    },
-    watch: {
-        model: function(newModel, oldModel) {
-            if(oldModel)
-                this.hideLayer(oldModel.layer);
-            else
-                this.hideLayer(this.allModelsLayer);
-
-            if(newModel) {
-                this.createModelLayer(newModel);
-                this.showLayer(newModel.layer);
-            } else {
-                this.createAllModelsLayer();
-                this.showLayer(this.allModelsLayer);
+                circle._leaflet_id = feature.properties.id;
+                circle.on('click', (e) => { this._onNodeClick(e); });
+                return circle;
             }
+            return L.geoJson(geojson, {
+                pointToLayer: pointToLayer
+            });
+        })();
+    }
+    async _onNodeClick(e) {
+        let node = this.model.nodes[e.target._leaflet_id];
+        if(!node) {
+            node = await getJSON(`/api/models/${this.model.name}/nodes/${e.target._leaflet_id}`);
+            this.model.nodes[node.node_id] = node;
+            var display = (num) => (num == null) ? "NA" : num;
+            e.target.bindPopup(
+                `Node ${this.node_id}<br>
+                VoltageA: ${display(node.VA)}<br>
+                VoltageB: ${display(node.VB)}<br>
+                VoltageC: ${display(node.VC)}`);
+            e.target.openPopup();
         }
-    },
-});
+    }
+    get _template() {
+        return `${ IF(this.model, () =>
+            `<div class="row" style="margin-bottom: 1rem">
+                <div class=col-md-4>
+                    <div class="card">
+                        <div class="card-header">
+                            Infos
+                        </div>
+                        <div class="card-body">
+                            Model name: ${ this.model.name }<br>
+                            Nodes count: <span id="nodescount"></span><br>
+                            Devices count: <span id="devicescount"></span><br>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-header">
+                            Devices count detail
+                        </div>
+                        <div id="devicecountdetail" class="card-body">
 
-var modelViewer = new Vue({
-    el: '#model-viewer',
-    data: {
-        models: undefined,
-        model: null,
-    },
-    async created() {
-        this.models = await getJSON("../api/models");
-        this.models = this.models.reduce((obj, model) => {obj[model.name] = model; return obj;}, {});
-    },
-    mounted() {
-        this.leafletMap = L.map('leaflet-map').setView([37.8,-122.0], 9);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19,
-            attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-        }).addTo(this.leafletMap);
-    },
-})
-*/
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-header input-group">
+                            <input class="form-control" placeholder="Search" name="srch-term" id="srch-term" type="text">
+                            <div class="input-group-btn">
+                                <button class="btn btn-default" type="submit">Search</button>
+                            </div>
+                        </div>
+                        <div id="searchresult" class="card-body">
+                            Search
+                        </div>
+                    </div>
+                </div>
+            </div>`
+        ) }`;
+    }
+}
+
+var modelViewer = new ModelViewer();
+modelViewer.emplace(document.querySelector('#model-viewer'));
+modelViewer.render();
+modelViewer.modelName = '';
